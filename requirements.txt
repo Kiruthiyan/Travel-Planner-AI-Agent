@@ -12,3 +12,4 @@ agno>=0.0.49
 
 # Optional: plotting or visual helpers
 matplotlib>=3.8.0
+google-generativeai

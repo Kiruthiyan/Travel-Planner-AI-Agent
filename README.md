@@ -99,7 +99,7 @@ graph TD
 ### **1. Clone Repo**
 
 ```bash
-git clone https://github.com/kiruthiyan/luxe-travel-ai.git
+git clone [https://github.com/kiruthiyan/luxe-travel-ai.git](https://github.com/Kiruthiyan/Travel-Planner-AI-Agent)
 cd luxe-travel-ai
 ```
 

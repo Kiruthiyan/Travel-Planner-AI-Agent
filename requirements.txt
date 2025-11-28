@@ -13,3 +13,12 @@ agno>=0.0.49
 # Optional: plotting or visual helpers
 matplotlib>=3.8.0
 google-generativeai
+
+
+streamlit
+agno
+google-generativeai
+streamlit-lottie
+requests
+fpdf
+python-dotenv

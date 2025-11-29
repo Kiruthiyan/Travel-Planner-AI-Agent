@@ -94,6 +94,15 @@ st.markdown(f"""
         font-family: 'Inter', sans-serif;
     }}
 
+     /* SIDEBAR ADAPTATION */
+    [data-testid="stSidebar"] {{
+        background-color: var(--sidebar-bg);
+        border-right: 1px solid var(--card-border);
+    }}
+    [data-testid="stSidebar"] h1, [data-testid="stSidebar"] p, [data-testid="stSidebar"] label {{
+        color: var(--text-color) !important;
+    }}
+
     /* HEADERS */
     h1, h2, h3 {{
         font-family: 'Playfair Display', serif;
@@ -190,15 +199,27 @@ def load_lottie_url(url: str):
 col_logo, col_anim = st.columns([2, 1])
 
 with col_logo:
-    st.markdown("# LUXETRAVEL AI")
-    st.markdown('<div class="sub-text">The Art of Curated Journeys • Powered by Gemini</div>', unsafe_allow_html=True)
-    st.write("") 
     st.markdown(
         """
+        <h1 style="
+            font-family: 'Playfair Display', serif;
+            font-size: 50px;
+            font-weight: 700;
+            color: var(--gold-accent);
+            margin-bottom: -10px;
+        ">
+            LUXETRAVEL AI
+        </h1>
+        <div class="sub-text">The Art of Curated Journeys • Powered by Gemini</div>
+        """,
+        unsafe_allow_html=True
+    )
+
+    st.markdown("""
         Welcome to your personal travel concierge. We combine **real-time flight data**, 
         **deep local research**, and **bespoke planning** to craft the perfect itinerary.
-        """
-    )
+    """)
+
 
 with col_anim:
     # UPDATED: Premium Flight Animation (Plane over world map)

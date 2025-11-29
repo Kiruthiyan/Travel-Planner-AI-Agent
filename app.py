@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor
 from streamlit_lottie import st_lottie
 from io import BytesIO
 from fpdf import FPDF
+from agno.models.google import Gemini
 
 # --- MOCK IMPORTS FOR DEMO ---
 # (Replace with your actual Agno imports when running locally)
@@ -272,73 +273,87 @@ col_center = st.columns([1, 2, 1])
 with col_center[1]:
     generate_btn = st.button("✨ Curate My Itinerary")
 
-# ---------- LOGIC ----------
-if "results" not in st.session_state:
-    st.session_state.results = {}
 
+import traceback  # Add at the top with other imports
+
+# Calculate number of days from departure and return dates
+num_days = (return_date - departure_date).days + 1
+
+# ---------- SESSION MEMORY ----------
+if "user_session" not in st.session_state:
+    st.session_state.user_session = {}
+
+st.session_state.user_session.update({
+    "source": source,
+    "destination": destination,
+    "num_days": num_days,
+    "travel_theme": travel_theme,
+    "activity_preferences": activity_preferences,
+    "departure_date": str(departure_date),
+    "return_date": str(return_date),
+    "budget": budget,
+    "num_guests": num_guests
+})
+
+# ---------- AGENT SETUP ----------
+researcher = ResearcherAgent(model=Gemini(id=MODEL_ID))
+hotel_finder = HotelFinderAgent(model=Gemini(id=MODEL_ID))
+planner = PlannerAgent(model=Gemini(id=MODEL_ID))
+
+# ---------- HELPER ----------
+def format_datetime(dt):
+    return datetime.strptime(str(dt), "%Y-%m-%d").strftime("%b %d, %Y")
+
+def log_agent(name, message):
+    st.text(f"[{name}] {message}")  # Streamlit logging
+    with open("logs/agent_logs.txt", "a") as f:
+        f.write(f"[{name}] {message}\n")
+
+# ---------- GENERATE TRAVEL PLAN ----------
 if generate_btn:
-    if not GEMINI_API_KEY:
-        st.error("⚠️ Access Key Missing: Please set GEMINI_API_KEY.")
-    else:
-        with st.status("💎 LuxeTravel AI is working...", expanded=True) as status:
-            
-            # MOCKING THE RESPONSE FOR UI TESTING (Since Agents need API Key)
-            # Remove this mock block and uncomment real logic below for production
-            import time
-            st.write("🕵️ **Researcher Agent:** Scanning destination...")
-            time.sleep(1)
-            st.write("✈️ **Flight Desk:** Checking First Class availability...")
-            time.sleep(1)
-            st.write("📅 **Planner Agent:** Finalizing itinerary...")
-            time.sleep(1)
-            
-            # --- REAL AGENT LOGIC (Uncomment to use) ---
-            # researcher = ResearcherAgent(model=Gemini(id=MODEL_ID))
-            # planner = PlannerAgent(model=Gemini(id=MODEL_ID))
-            # ... (Logic from previous code) ...
-            
-            # Mock Data for Display
-            st.session_state.results = {
-                "itinerary": f"### Day 1: Arrival in {destination}\n* **10:00 AM:** Private transfer to Hotel.\n* **01:00 PM:** Lunch at *Le Jules Verne*.\n* **04:00 PM:** Private Shopping.",
-                "hotels": "1. **The Ritz** - $1,200/night\n2. **Four Seasons** - $1,400/night",
-                "flights": [{"airline": "Emirates", "price": "$4,200", "total_duration": "7h 20m"}],
-                "research": f"Current weather in {destination} is mild. Top events include Fashion Week."
-            }
-            
-            status.update(label="🥂 Itinerary Ready!", state="complete", expanded=False)
+    st.info("Contacting Gemini AI agents...")
+    try:
+        # Run Researcher & HotelFinder in parallel
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            future_research = executor.submit(lambda: researcher.run(
+                f"Research top attractions, culture, climate, and safety tips for {destination}.",
+                stream=False
+            ))
+            log_agent("Researcher", "Submitted task...")
 
-# ---------- RESULTS ----------
-if st.session_state.results:
-    res = st.session_state.results
-    
-    st.write("")
-    st.markdown("### 🥂 Your Curated Experience")
-    
-    tab1, tab2, tab3, tab4 = st.tabs(["📅 Daily Itinerary", "🏨 Accommodation", "✈️ Flights", "🕵️ Intel"])
+            future_hotel = executor.submit(lambda: hotel_finder.run(
+                f"Find best hotels and restaurants for {travel_theme} trip in {destination} "
+                f"with budget {budget}.",
+                stream=False
+            ))
+            log_agent("HotelFinder", "Submitted task...")
 
-    with tab1:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown(res["itinerary"])
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-        if st.button("📄 Download PDF"):
-            st.success("PDF Download feature initiated.")
+            research_results = future_research.result()
+            log_agent("Researcher", "Completed research.")
 
-    with tab2:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown(res["hotels"])
-        st.markdown('</div>', unsafe_allow_html=True)
+            hotel_results = future_hotel.result()
+            log_agent("HotelFinder", "Completed hotel search.")
 
-    with tab3:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        for f in res["flights"]:
-            st.markdown(f"**{f['airline']}** | {f['total_duration']} | <span style='color:{'#000' if st.session_state.theme == 'Light Mode' else '#4ade80'}'>**{f['price']}**</span>", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
-        
-    with tab4:
-        st.markdown('<div class="glass-card">', unsafe_allow_html=True)
-        st.markdown(res["research"])
-        st.markdown('</div>', unsafe_allow_html=True)
+        # Planner runs after both complete
+        planning_prompt = (
+            f"Create a {num_days}-day itinerary for a {travel_theme} trip from {source} to {destination} "
+            f"({format_datetime(departure_date)} to {format_datetime(return_date)}). "
+            f"Activities: {activity_preferences}. Budget: {budget}. "
+            f"Include flights, hotels, restaurants, and daily schedule. "
+            f"Research info: {research_results.content}. Hotels info: {hotel_results.content}."
+        )
+        itinerary = planner.run(planning_prompt, stream=False)
+        log_agent("Planner", "Itinerary generated.")
 
-st.markdown("---")
-st.markdown(f"<div style='text-align: center; color: var(--sub-text-color);'>Designed for the discerning traveler. © 2025 LuxeTravel AI.</div>", unsafe_allow_html=True)
+        # ---------- DISPLAY ----------
+        st.subheader("🗺️ Destination Research")
+        st.write(research_results.content)
+        st.subheader("🏨 Hotels & Restaurants")
+        st.write(hotel_results.content)
+        st.subheader("🗓️ Personalized Itinerary")
+        st.write(itinerary.content)
+        st.success("✅ Travel plan generated successfully!")
+
+    except Exception as e:
+        st.error("❌ Error generating travel plan. Check GEMINI_API_KEY and Model ID.")
+        st.write(traceback.format_exc())
